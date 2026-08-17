@@ -1,69 +1,98 @@
-import Image from "next/image";
+"use client";
+
+import { ChangeEvent, FormEvent, useState } from "react";
+
+type StudyTopic = { title: string; priority: number; estimatedMinutes: number; rationale: string; suggestedDay: number };
+type StudyPlan = { overview: string; daysRemaining: number; topics: StudyTopic[] };
+
+function formatDuration(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (hours === 0) return `${remainder} min`;
+  return remainder === 0 ? `${hours} hr` : `${hours} hr ${remainder} min`;
+}
 
 export default function Home() {
+  const [examDate, setExamDate] = useState("");
+  const [assessmentType, setAssessmentType] = useState<"quiz" | "exam">("exam");
+  const [topics, setTopics] = useState("");
+  const [courseMaterials, setCourseMaterials] = useState("");
+  const [background, setBackground] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [plan, setPlan] = useState<StudyPlan | null>(null);
+  const [error, setError] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+    setFiles(Array.from(event.target.files ?? []));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setPlan(null);
+    if (!examDate) return setError("Choose the date of your assessment.");
+    if (!topics.trim() && !courseMaterials.trim() && files.length === 0) return setError("Add topics, course study materials, or at least one file.");
+
+    const formData = new FormData();
+    formData.append("examDate", examDate);
+    formData.append("assessmentType", assessmentType);
+    formData.append("topics", topics);
+    formData.append("courseMaterials", courseMaterials);
+    formData.append("background", background);
+    files.forEach((file) => formData.append("files", file));
+
+    setIsGenerating(true);
+    try {
+      const response = await fetch("/api/study-plan", { method: "POST", body: formData });
+      const result = (await response.json()) as { plan?: StudyPlan; error?: string };
+      if (!response.ok || !result.plan) throw new Error(result.error ?? "We couldn't generate a study plan.");
+      setPlan(result.plan);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "We couldn't generate a study plan.");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-[#f7f7f3] text-slate-900">
+      <section className="mx-auto max-w-6xl px-5 py-10 sm:px-8 lg:py-16">
+        <header className="mb-10 max-w-2xl">
+          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">Focused study, one plan at a time</p>
+          <h1 className="font-serif text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">Turn your course material into a calm, clear plan.</h1>
+          <p className="mt-4 text-lg leading-8 text-slate-600">Share your notes and what feels shaky. We’ll organize the work around your exam date.</p>
+        </header>
+
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+          <form onSubmit={handleSubmit} className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-5"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-800">1</span><div><h2 className="text-lg font-semibold">Tell me what you’re studying</h2><p className="text-sm text-slate-500">Nothing is saved yet — this is just your first draft.</p></div></div>
+            <fieldset className="mt-6">
+              <legend className="text-sm font-semibold">Assessment type</legend>
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                {(["quiz", "exam"] as const).map((type) => <button key={type} type="button" onClick={() => setAssessmentType(type)} aria-pressed={assessmentType === type} className={`rounded-xl border px-4 py-3 text-left font-semibold capitalize transition ${assessmentType === type ? "border-emerald-700 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-100" : "border-slate-300 bg-white text-slate-600 hover:border-emerald-400"}`}><span className="block">{type}</span><span className="mt-1 block text-xs font-normal normal-case">{type === "quiz" ? "Targeted sessions and quick drills" : "Comprehensive review and mock tests"}</span></button>)}
+              </div>
+            </fieldset>
+            <label className="mt-6 block text-sm font-semibold" htmlFor="exam-date">{assessmentType === "quiz" ? "Quiz" : "Exam"} date</label>
+            <input className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" id="exam-date" type="date" value={examDate} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setExamDate(event.target.value)} required />
+            <label className="mt-6 block text-sm font-semibold" htmlFor="topics">Topics</label>
+            <textarea className="mt-2 min-h-28 w-full resize-y rounded-xl border border-slate-300 bg-white px-4 py-3 leading-6 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" id="topics" placeholder="List the chapters, learning objectives, or specific concepts to cover…" value={topics} onChange={(event) => setTopics(event.target.value)} />
+            <label className="mt-6 block text-sm font-semibold" htmlFor="course-materials">Course study materials</label>
+            <textarea className="mt-2 min-h-32 w-full resize-y rounded-xl border border-slate-300 bg-white px-4 py-3 leading-6 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" id="course-materials" placeholder="Paste lecture notes, textbook references, past-paper questions, or practice problems…" value={courseMaterials} onChange={(event) => setCourseMaterials(event.target.value)} />
+            <label className="mt-6 block text-sm font-semibold" htmlFor="files">Upload course study materials <span className="font-normal text-slate-500">(optional)</span></label>
+            <input className="mt-2 block w-full cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-emerald-100 file:px-3 file:py-2 file:font-semibold file:text-emerald-800 hover:file:bg-emerald-200" id="files" type="file" accept=".pdf,.txt,image/*" multiple onChange={handleFiles} />
+            {files.length > 0 && <p className="mt-2 text-sm text-slate-500">{files.map((file) => file.name).join(", ")}</p>}
+            <label className="mt-6 block text-sm font-semibold" htmlFor="background">What do you already know or feel behind on?</label>
+            <textarea className="mt-2 min-h-28 w-full resize-y rounded-xl border border-slate-300 bg-white px-4 py-3 leading-6 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" id="background" placeholder="For example: I understand chapters 1–3, but I keep mixing up the formulas in chapter 5." value={background} onChange={(event) => setBackground(event.target.value)} />
+            {error && <p className="mt-5 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
+            <button disabled={isGenerating} className="mt-6 w-full rounded-xl bg-emerald-700 px-5 py-3.5 font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-wait disabled:bg-emerald-400" type="submit">{isGenerating ? "Building your plan…" : "Build my study plan"}</button>
+          </form>
+
+          <section aria-live="polite" className="rounded-3xl border border-dashed border-slate-300 bg-[#fcfcfa] p-6 sm:p-8">
+            {plan ? <div><div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5"><div><p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">Your {assessmentType} study plan</p><h2 className="mt-1 text-2xl font-semibold">{plan.daysRemaining} {plan.daysRemaining === 1 ? "day" : "days"} to prepare</h2></div><span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600">{plan.topics.length} focus areas</span></div><p className="mt-5 leading-7 text-slate-600">{plan.overview}</p><ol className="mt-7 space-y-4">{plan.topics.map((topic) => <li key={`${topic.priority}-${topic.title}`} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-800">{topic.priority}</span><h3 className="font-semibold">{topic.title}</h3></div><span className="text-sm font-medium text-slate-500">Day {topic.suggestedDay} · {formatDuration(topic.estimatedMinutes)}</span></div><p className="mt-3 text-sm leading-6 text-slate-600">{topic.rationale}</p></li>)}</ol></div> : <div className="flex min-h-96 flex-col items-center justify-center text-center"><span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-2xl">✦</span><h2 className="mt-5 text-xl font-semibold">Your plan will appear here</h2><p className="mt-2 max-w-sm leading-7 text-slate-500">Choose an assessment type, add topics or course materials, and you’ll get a focused sequence with realistic time estimates.</p></div>}
+          </section>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </section>
+    </main>
   );
 }
