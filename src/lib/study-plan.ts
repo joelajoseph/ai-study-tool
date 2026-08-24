@@ -1,5 +1,20 @@
 export type StudyTopic = { title: string; priority: number; estimatedMinutes: number; rationale: string; suggestedDay: number; materials: string[] };
-export type StudyPlan = { overview: string; daysRemaining: number; topics: StudyTopic[] };
+export type StudyPlan = { overview: string; daysRemaining: number; topics: StudyTopic[]; assessmentType?: "quiz" | "exam" };
+
+// Shapes returned once a plan has been persisted (Phase 2). A StoredPlan is a
+// superset of StudyPlan, so the same UI renders both.
+export type PlanTopicRow = StudyTopic & { id: number; completed: boolean };
+export type StoredPlan = {
+  id: number;
+  examDate: string;
+  assessmentType: "quiz" | "exam";
+  createdAt: string;
+  overview: string;
+  daysRemaining: number;
+  topics: PlanTopicRow[];
+};
+export type MaterialSummary = { id: number; title: string; sourceType: "pdf" | "image" | "text"; createdAt: string };
+export type SavedStateResponse = { plan: StoredPlan | null; materials: MaterialSummary[]; persistenceEnabled: boolean; error?: string };
 
 // Validates the model's raw JSON reply into a StudyPlan. Individual fields get
 // sensible fallbacks so one malformed value doesn't throw away the whole plan;

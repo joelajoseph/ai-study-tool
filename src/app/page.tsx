@@ -1,10 +1,11 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { AssessmentTypePicker } from "@/components/assessment-type-picker";
 import { PlanDisplay, PlanEmptyState } from "@/components/plan-display";
+import { SavedMaterials } from "@/components/saved-materials";
 import { MAX_FILE_SIZE, MAX_IMAGE_UPLOADS } from "@/lib/constants";
-import type { StudyPlan } from "@/lib/study-plan";
+import type { MaterialSummary, SavedStateResponse, StudyPlan } from "@/lib/study-plan";
 
 export default function Home() {
   const [examDate, setExamDate] = useState("");
@@ -14,9 +15,28 @@ export default function Home() {
   const [background, setBackground] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [plan, setPlan] = useState<StudyPlan | null>(null);
+  const [materials, setMaterials] = useState<MaterialSummary[]>([]);
+  const [persistenceEnabled, setPersistenceEnabled] = useState(false);
   const [warning, setWarning] = useState("");
   const [error, setError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // On first load, bring back the latest saved plan and materials so a
+  // refresh (or coming back tomorrow) picks up where you left off.
+  useEffect(() => {
+    async function loadSavedState() {
+      try {
+        const response = await fetch("/api/study-plan");
+        const result = (await response.json()) as SavedStateResponse;
+        setPersistenceEnabled(result.persistenceEnabled);
+        setMaterials(result.materials ?? []);
+        if (result.plan) setPlan(result.plan);
+      } catch {
+        setPersistenceEnabled(false);
+      }
+    }
+    void loadSavedState();
+  }, []);
 
   function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     setFiles(Array.from(event.target.files ?? []));
@@ -54,10 +74,11 @@ export default function Home() {
     setIsGenerating(true);
     try {
       const response = await fetch("/api/study-plan", { method: "POST", body: formData });
-      const result = (await response.json()) as { plan?: StudyPlan; error?: string; warning?: string };
+      const result = (await response.json()) as { plan?: StudyPlan; error?: string; warning?: string; materials?: MaterialSummary[] };
       if (!response.ok || !result.plan) throw new Error(result.error ?? "We couldn't generate a study plan.");
       setPlan(result.plan);
       if (result.warning) setWarning(result.warning);
+      if (result.materials) setMaterials(result.materials);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "We couldn't generate a study plan.");
     } finally {
@@ -76,7 +97,7 @@ export default function Home() {
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
           <form onSubmit={handleSubmit} className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
-            <div className="flex items-center gap-3 border-b border-slate-100 pb-5"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-800">1</span><div><h2 className="text-lg font-semibold">Tell me what you’re studying</h2><p className="text-sm text-slate-500">Nothing is saved yet — this is just your first draft.</p></div></div>
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-5"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-800">1</span><div><h2 className="text-lg font-semibold">Tell me what you’re studying</h2><p className="text-sm text-slate-500">{persistenceEnabled ? "Plans and materials are saved automatically." : "Nothing is saved yet — this is just your first draft."}</p></div></div>
             <AssessmentTypePicker value={assessmentType} onChange={setAssessmentType} />
             <label className="mt-6 block text-sm font-semibold" htmlFor="exam-date">{assessmentType === "quiz" ? "Quiz" : "Exam"} date</label>
             <input className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" id="exam-date" type="date" value={examDate} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setExamDate(event.target.value)} required />
@@ -96,6 +117,7 @@ export default function Home() {
           <section aria-live="polite" className="rounded-3xl border border-dashed border-slate-300 bg-[#fcfcfa] p-6 sm:p-8">
             {warning && <p className="mb-5 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">{warning}</p>}
             {plan ? <PlanDisplay plan={plan} assessmentType={assessmentType} /> : <PlanEmptyState />}
+            <SavedMaterials materials={materials} />
           </section>
         </div>
       </section>

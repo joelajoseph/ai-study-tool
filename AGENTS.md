@@ -28,7 +28,10 @@ simplicity over scalability.
 - **React Compiler**: enabled (`reactCompiler: true` in `next.config.ts`) —
   do not manually add `useMemo`/`useCallback` for performance; let the
   compiler handle memoization
-- **Database**: Supabase (Postgres), free tier
+- **Database**: Supabase (Postgres), free tier — schema lives in
+  `supabase/schema.sql` (run once in the project's SQL editor). All access is
+  server-side via `src/lib/supabase.ts` with the service role key; when the
+  env vars are missing, the app runs without persistence instead of failing.
 - **File storage**: Supabase Storage if raw files are kept; otherwise store
   only extracted text (preferred — cheaper and simpler)
 - **LLM provider**: Google Gemini API (free tier), called from server-side

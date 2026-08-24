@@ -39,11 +39,14 @@ function TopicCard({ topic, position }: { topic: StudyTopic; position: number })
 }
 
 export function PlanDisplay({ plan, assessmentType }: { plan: StudyPlan; assessmentType: AssessmentType }) {
+  // A stored plan remembers its own assessment type; a freshly generated one
+  // falls back to whatever the form has selected.
+  const planType = plan.assessmentType ?? assessmentType;
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">Your {assessmentType} study plan</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">Your {planType} study plan</p>
           <h2 className="mt-1 text-2xl font-semibold">{plan.daysRemaining} {plan.daysRemaining === 1 ? "day" : "days"} to prepare</h2>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600">{plan.topics.length} focus areas</span>
