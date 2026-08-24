@@ -38,6 +38,13 @@ simplicity over scalability.
     Anthropic's Claude API) without touching UI or route code.
 - **Deployment target**: Vercel (free tier), when ready to deploy — local
   dev via `npm run dev` is sufficient for now.
+  - Deployment constraints to keep in mind now: Vercel serverless functions
+    cap request bodies at ~4.5 MB, so upload limits must stay below that
+    (see `src/lib/constants.ts`); the study-plan route sets
+    `export const maxDuration = 60` because Gemini calls with large
+    attachments run long.
+  - Before deploying publicly, add a simple password gate — otherwise anyone
+    who finds the URL can burn through the Gemini free-tier quota.
 
 ## Core features (build in this order)
 

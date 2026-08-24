@@ -1,16 +1,10 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useState } from "react";
-
-type StudyTopic = { title: string; priority: number; estimatedMinutes: number; rationale: string; suggestedDay: number };
-type StudyPlan = { overview: string; daysRemaining: number; topics: StudyTopic[] };
-
-function formatDuration(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  if (hours === 0) return `${remainder} min`;
-  return remainder === 0 ? `${hours} hr` : `${hours} hr ${remainder} min`;
-}
+import { AssessmentTypePicker } from "@/components/assessment-type-picker";
+import { PlanDisplay, PlanEmptyState } from "@/components/plan-display";
+import { MAX_FILE_SIZE, MAX_IMAGE_UPLOADS } from "@/lib/constants";
+import type { StudyPlan } from "@/lib/study-plan";
 
 export default function Home() {
   const [examDate, setExamDate] = useState("");
@@ -20,6 +14,7 @@ export default function Home() {
   const [background, setBackground] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [plan, setPlan] = useState<StudyPlan | null>(null);
+  const [warning, setWarning] = useState("");
   const [error, setError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -27,12 +22,26 @@ export default function Home() {
     setFiles(Array.from(event.target.files ?? []));
   }
 
+  // Fail fast on obvious file problems before uploading anything.
+  function findFileProblem() {
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE) return `${file.name} is larger than the ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)} MB upload limit.`;
+    }
+    if (files.filter((file) => file.type.startsWith("image/")).length > MAX_IMAGE_UPLOADS) {
+      return `Too many images. Upload at most ${MAX_IMAGE_UPLOADS}.`;
+    }
+    return null;
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setWarning("");
     setPlan(null);
     if (!examDate) return setError("Choose the date of your assessment.");
     if (!topics.trim() && !courseMaterials.trim() && files.length === 0) return setError("Add topics, course study materials, or at least one file.");
+    const fileProblem = findFileProblem();
+    if (fileProblem) return setError(fileProblem);
 
     const formData = new FormData();
     formData.append("examDate", examDate);
@@ -45,9 +54,10 @@ export default function Home() {
     setIsGenerating(true);
     try {
       const response = await fetch("/api/study-plan", { method: "POST", body: formData });
-      const result = (await response.json()) as { plan?: StudyPlan; error?: string };
+      const result = (await response.json()) as { plan?: StudyPlan; error?: string; warning?: string };
       if (!response.ok || !result.plan) throw new Error(result.error ?? "We couldn't generate a study plan.");
       setPlan(result.plan);
+      if (result.warning) setWarning(result.warning);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "We couldn't generate a study plan.");
     } finally {
@@ -67,12 +77,7 @@ export default function Home() {
         <div className="grid gap-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
           <form onSubmit={handleSubmit} className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
             <div className="flex items-center gap-3 border-b border-slate-100 pb-5"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 font-semibold text-emerald-800">1</span><div><h2 className="text-lg font-semibold">Tell me what you’re studying</h2><p className="text-sm text-slate-500">Nothing is saved yet — this is just your first draft.</p></div></div>
-            <fieldset className="mt-6">
-              <legend className="text-sm font-semibold">Assessment type</legend>
-              <div className="mt-2 grid grid-cols-2 gap-3">
-                {(["quiz", "exam"] as const).map((type) => <button key={type} type="button" onClick={() => setAssessmentType(type)} aria-pressed={assessmentType === type} className={`rounded-xl border px-4 py-3 text-left font-semibold capitalize transition ${assessmentType === type ? "border-emerald-700 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-100" : "border-slate-300 bg-white text-slate-600 hover:border-emerald-400"}`}><span className="block">{type}</span><span className="mt-1 block text-xs font-normal normal-case">{type === "quiz" ? "Targeted sessions and quick drills" : "Comprehensive review and mock tests"}</span></button>)}
-              </div>
-            </fieldset>
+            <AssessmentTypePicker value={assessmentType} onChange={setAssessmentType} />
             <label className="mt-6 block text-sm font-semibold" htmlFor="exam-date">{assessmentType === "quiz" ? "Quiz" : "Exam"} date</label>
             <input className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" id="exam-date" type="date" value={examDate} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setExamDate(event.target.value)} required />
             <label className="mt-6 block text-sm font-semibold" htmlFor="topics">Topics</label>
@@ -84,12 +89,13 @@ export default function Home() {
             {files.length > 0 && <p className="mt-2 text-sm text-slate-500">{files.map((file) => file.name).join(", ")}</p>}
             <label className="mt-6 block text-sm font-semibold" htmlFor="background">What do you already know or feel behind on?</label>
             <textarea className="mt-2 min-h-28 w-full resize-y rounded-xl border border-slate-300 bg-white px-4 py-3 leading-6 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" id="background" placeholder="For example: I understand chapters 1–3, but I keep mixing up the formulas in chapter 5." value={background} onChange={(event) => setBackground(event.target.value)} />
-            {error && <p className="mt-5 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
+            {error && <p role="alert" className="mt-5 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
             <button disabled={isGenerating} className="mt-6 w-full rounded-xl bg-emerald-700 px-5 py-3.5 font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-wait disabled:bg-emerald-400" type="submit">{isGenerating ? "Building your plan…" : "Build my study plan"}</button>
           </form>
 
           <section aria-live="polite" className="rounded-3xl border border-dashed border-slate-300 bg-[#fcfcfa] p-6 sm:p-8">
-            {plan ? <div><div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5"><div><p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">Your {assessmentType} study plan</p><h2 className="mt-1 text-2xl font-semibold">{plan.daysRemaining} {plan.daysRemaining === 1 ? "day" : "days"} to prepare</h2></div><span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600">{plan.topics.length} focus areas</span></div><p className="mt-5 leading-7 text-slate-600">{plan.overview}</p><ol className="mt-7 space-y-4">{plan.topics.map((topic) => <li key={`${topic.priority}-${topic.title}`} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-800">{topic.priority}</span><h3 className="font-semibold">{topic.title}</h3></div><span className="text-sm font-medium text-slate-500">Day {topic.suggestedDay} · {formatDuration(topic.estimatedMinutes)}</span></div><p className="mt-3 text-sm leading-6 text-slate-600">{topic.rationale}</p></li>)}</ol></div> : <div className="flex min-h-96 flex-col items-center justify-center text-center"><span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-2xl">✦</span><h2 className="mt-5 text-xl font-semibold">Your plan will appear here</h2><p className="mt-2 max-w-sm leading-7 text-slate-500">Choose an assessment type, add topics or course materials, and you’ll get a focused sequence with realistic time estimates.</p></div>}
+            {warning && <p className="mb-5 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">{warning}</p>}
+            {plan ? <PlanDisplay plan={plan} assessmentType={assessmentType} /> : <PlanEmptyState />}
           </section>
         </div>
       </section>
