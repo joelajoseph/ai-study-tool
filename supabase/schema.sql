@@ -46,6 +46,7 @@ create table if not exists public.chat_messages (
 create index if not exists plan_topics_plan_id_idx on public.plan_topics (plan_id);
 create index if not exists plans_created_at_idx on public.plans (created_at desc);
 create index if not exists materials_created_at_idx on public.materials (created_at desc);
+create index if not exists chat_messages_plan_id_idx on public.chat_messages (plan_id);
 
 -- Later schema additions, kept here so the file stays the one source of truth
 -- and is safe to re-run on an existing database.
