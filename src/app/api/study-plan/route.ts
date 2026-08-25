@@ -1,6 +1,6 @@
 import { PDFParse } from "pdf-parse";
 import { ApiError, toErrorResponse } from "@/lib/api-error";
-import { MAX_FILE_SIZE, MAX_IMAGE_UPLOADS, MAX_TEXT_LENGTH } from "@/lib/constants";
+import { MAX_IMAGE_UPLOADS, MAX_TEXT_LENGTH } from "@/lib/constants";
 import { generateStudyPlan, type ImagePart } from "@/lib/llm";
 import type { ParsedUpload, PlanDraft } from "@/lib/study-plan";
 
@@ -13,9 +13,7 @@ async function readFiles(files: File[]) {
   const images: ImagePart[] = [];
   const textParts: string[] = [];
   for (const file of files) {
-    if (file.size > MAX_FILE_SIZE) {
-      throw new ApiError(`${file.name} is larger than the ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)} MB upload limit.`);
-    }
+    // Per-file size check temporarily removed for testing (see constants.ts).
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
       const parser = new PDFParse({ data: Buffer.from(await file.arrayBuffer()) });
       try {

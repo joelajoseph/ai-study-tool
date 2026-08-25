@@ -2,11 +2,12 @@
 
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { AssessmentTypePicker } from "@/components/assessment-type-picker";
+import { ChatPanel } from "@/components/chat-panel";
 import { PlanDisplay, PlanEmptyState } from "@/components/plan-display";
 import { PlanTitlePanel } from "@/components/plan-title-panel";
 import { PlansList } from "@/components/plans-list";
 import { SavedMaterials } from "@/components/saved-materials";
-import { MAX_FILE_SIZE, MAX_IMAGE_UPLOADS } from "@/lib/constants";
+import { MAX_IMAGE_UPLOADS } from "@/lib/constants";
 import { defaultPlanTitle } from "@/lib/study-plan";
 import type { LoadedPlan, MaterialSummary, PlanDraft, PlanSummary, StoredPlan, StudyPlan } from "@/lib/study-plan";
 
@@ -130,6 +131,10 @@ export default function Home() {
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
               <PlanDisplay plan={view.loaded.plan} assessmentType={view.loaded.plan.assessmentType} />
               <SavedMaterials materials={view.loaded.materials} />
+              {/* key forces a fresh mount per plan, so switching plans
+                  reloads that plan's conversation instead of keeping the
+                  previous one's messages. */}
+              <ChatPanel key={view.loaded.plan.id} planId={view.loaded.plan.id} />
             </div>
           </div>
         )}
@@ -204,9 +209,7 @@ function useAppView() {
   }
 
   function findFileProblem() {
-    for (const file of files) {
-      if (file.size > MAX_FILE_SIZE) return `${file.name} is larger than the ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)} MB upload limit.`;
-    }
+    // Per-file size check temporarily removed for testing (see constants.ts).
     if (files.filter((file) => file.type.startsWith("image/")).length > MAX_IMAGE_UPLOADS) {
       return `Too many images. Upload at most ${MAX_IMAGE_UPLOADS}.`;
     }

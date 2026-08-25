@@ -1,6 +1,7 @@
 import "server-only";
 
 import { requireSupabase } from "@/lib/supabase";
+import { mapChatMessageRows, type ChatMessage, type ChatMessageRow, type MaterialWithText } from "@/lib/chat";
 import type { LoadedPlan, PlanDraft, PlanSummary, StudyPlan } from "@/lib/study-plan";
 
 // Writes a generated draft to the database for the first time: the plan row,
@@ -145,4 +146,72 @@ export async function renamePlan(id: number, title: string): Promise<LoadedPlan>
   const loaded = await loadPlan(id);
   if (!loaded) throw new Error("Plan not found after rename.");
   return loaded;
+}
+
+// The extracted text behind a plan's materials — what chat answers are
+// grounded in. loadPlan deliberately returns only material metadata (the plan
+// UI never needs the full text), so this is a separate read.
+export async function loadMaterialsText(planId: number): Promise<MaterialWithText[]> {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from("materials")
+    .select("title, extracted_text")
+    .eq("plan_id", planId)
+    .order("created_at");
+  if (error) throw new Error(`Loading material text failed: ${error.message}`);
+  // Image uploads have no stored text; they're simply absent from the prompt.
+  return (data ?? []).flatMap((row) => {
+    const text = row.extracted_text;
+    return typeof text === "string" && text.trim().length > 0 ? [{ title: row.title, text }] : [];
+  });
+}
+
+// A plan's recent chat history in chronological order. Ordered by id rather
+// than created_at because both messages of one exchange are written within
+// the same instant, so timestamps can tie while ids cannot.
+export async function loadChatMessages(planId: number, maxCount: number): Promise<ChatMessage[]> {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select("id, role, content, created_at")
+    .eq("plan_id", planId)
+    .order("id", { ascending: false })
+    .limit(maxCount);
+  if (error) throw new Error(`Loading chat history failed: ${error.message}`);
+  return mapChatMessageRows(((data ?? []) as ChatMessageRow[]).reverse());
+}
+
+// Persists one completed exchange: the learner's question plus the model's
+// answer. The Supabase JS client has no multi-statement transactions, so if
+// the second insert fails we delete the first — the same compensating-delete
+// pattern savePlan uses — rather than leave an unanswered orphan question.
+export async function saveChatExchange(planId: number, question: string, answer: string): Promise<[ChatMessage, ChatMessage]> {
+  const supabase = requireSupabase();
+  const { data: userRow, error: userError } = await supabase
+    .from("chat_messages")
+    .insert({ plan_id: planId, role: "user", content: question })
+    .select("id, role, content, created_at")
+    .single();
+  if (userError) throw new Error(`Saving chat message failed: ${userError.message}`);
+
+  try {
+    const { data: assistantRow, error: assistantError } = await supabase
+      .from("chat_messages")
+      .insert({ plan_id: planId, role: "assistant", content: answer })
+      .select("id, role, content, created_at")
+      .single();
+    if (assistantError) throw new Error(`Saving chat reply failed: ${assistantError.message}`);
+    const mapped = mapChatMessageRows([userRow, assistantRow]);
+    if (!mapped[0] || !mapped[1]) throw new Error("Saved chat messages could not be read back.");
+    return [mapped[0], mapped[1]];
+  } catch (error) {
+    await supabase.from("chat_messages").delete().eq("id", userRow.id);
+    throw error;
+  }
+}
+
+export async function clearChatMessages(planId: number): Promise<void> {
+  const supabase = requireSupabase();
+  const { error } = await supabase.from("chat_messages").delete().eq("plan_id", planId);
+  if (error) throw new Error(`Clearing chat history failed: ${error.message}`);
 }
