@@ -69,6 +69,10 @@ simplicity over scalability.
   history if the plan is regenerated.
 - Materials and the latest plan should survive a page refresh / new
   session.
+- Saving is explicit, not automatic: generating produces a client-side
+  draft (never written to the DB), and a "Save plan" action persists it
+  with a user-supplied title. Multiple saved plans are supported
+  (`/api/plans` list/load/delete); drafts are lost on reload by design.
 
 ### Phase 3 — Chat / Q&A
 - Chat interface scoped to the uploaded material: each message sends the

@@ -1,11 +1,26 @@
+export type ParsedUpload = { title: string; sourceType: "pdf" | "image" | "text"; text: string | null };
 export type StudyTopic = { title: string; priority: number; estimatedMinutes: number; rationale: string; suggestedDay: number; materials: string[] };
-export type StudyPlan = { overview: string; daysRemaining: number; topics: StudyTopic[]; assessmentType?: "quiz" | "exam" };
+export type StudyPlan = { title?: string | null; overview: string; daysRemaining: number; topics: StudyTopic[]; assessmentType?: "quiz" | "exam" };
 
-// Shapes returned once a plan has been persisted (Phase 2). A StoredPlan is a
-// superset of StudyPlan, so the same UI renders both.
+// Everything needed to write a generated plan to the database later. It lives
+// in client state while the plan is an unsaved draft — the database is only
+// written when the user explicitly saves.
+export type PlanDraft = {
+  examDate: string;
+  assessmentType: "quiz" | "exam";
+  daysRemaining: number;
+  priorKnowledge: string;
+  topicsText: string;
+  pastedMaterials: string;
+  uploads: ParsedUpload[];
+};
+
+// Shapes returned once a plan has been persisted. A StoredPlan is a superset
+// of StudyPlan, so the same UI renders drafts and saved plans.
 export type PlanTopicRow = StudyTopic & { id: number; completed: boolean };
 export type StoredPlan = {
   id: number;
+  title: string | null;
   examDate: string;
   assessmentType: "quiz" | "exam";
   createdAt: string;
@@ -14,7 +29,25 @@ export type StoredPlan = {
   topics: PlanTopicRow[];
 };
 export type MaterialSummary = { id: number; title: string; sourceType: "pdf" | "image" | "text"; createdAt: string };
-export type SavedStateResponse = { plan: StoredPlan | null; materials: MaterialSummary[]; persistenceEnabled: boolean; error?: string };
+export type LoadedPlan = { plan: StoredPlan; materials: MaterialSummary[] };
+export type PlanSummary = {
+  id: number;
+  title: string | null;
+  examDate: string;
+  assessmentType: "quiz" | "exam";
+  daysRemaining: number;
+  createdAt: string;
+  topicCount: number;
+};
+
+export function defaultPlanTitle(assessmentType: "quiz" | "exam", examDate: string) {
+  return `${assessmentType === "quiz" ? "Quiz" : "Exam"} — ${examDate}`;
+}
+
+// Untitled plans (title stored as null) display a generated label instead.
+export function planDisplayLabel(plan: { title: string | null; assessmentType: "quiz" | "exam"; examDate: string }) {
+  return plan.title?.trim() || defaultPlanTitle(plan.assessmentType, plan.examDate);
+}
 
 // Validates the model's raw JSON reply into a StudyPlan. Individual fields get
 // sensible fallbacks so one malformed value doesn't throw away the whole plan;

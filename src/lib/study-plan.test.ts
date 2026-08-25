@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePlan } from "./study-plan";
+import { defaultPlanTitle, parsePlan, planDisplayLabel } from "./study-plan";
 
 const validPlan = {
   overview: "Focus on formulas first.",
@@ -85,5 +85,21 @@ describe("parsePlan", () => {
   it("rejects markdown-fenced JSON instead of misparsing it", () => {
     const fenced = "```json\n" + JSON.stringify(validPlan) + "\n```";
     expect(() => parsePlan(fenced, 3)).toThrow("unexpected format");
+  });
+});
+
+describe("plan titles", () => {
+  it("builds a sensible default title from the assessment type and date", () => {
+    expect(defaultPlanTitle("quiz", "2026-08-28")).toBe("Quiz — 2026-08-28");
+    expect(defaultPlanTitle("exam", "2026-09-01")).toBe("Exam — 2026-09-01");
+  });
+
+  it("falls back to a generated label when the saved title is missing or blank", () => {
+    expect(planDisplayLabel({ title: null, assessmentType: "quiz", examDate: "2026-08-28" })).toBe("Quiz — 2026-08-28");
+    expect(planDisplayLabel({ title: "   ", assessmentType: "exam", examDate: "2026-09-01" })).toBe("Exam — 2026-09-01");
+  });
+
+  it("uses the saved title when present", () => {
+    expect(planDisplayLabel({ title: "Calc II midterm", assessmentType: "exam", examDate: "2026-09-01" })).toBe("Calc II midterm");
   });
 });

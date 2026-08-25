@@ -47,6 +47,13 @@ create index if not exists plan_topics_plan_id_idx on public.plan_topics (plan_i
 create index if not exists plans_created_at_idx on public.plans (created_at desc);
 create index if not exists materials_created_at_idx on public.materials (created_at desc);
 
+-- Later schema additions, kept here so the file stays the one source of truth
+-- and is safe to re-run on an existing database.
+alter table public.plans add column if not exists title text;
+-- Materials belong to the plan they were uploaded with, so deleting a plan
+-- cleans up its materials automatically.
+alter table public.materials add column if not exists plan_id bigint references public.plans on delete cascade;
+
 -- Every read/write happens server-side with the service role key, which
 -- bypasses RLS. With RLS on and no policies, the anon/public key is locked
 -- out entirely — the safe default for a single-user app.
@@ -54,3 +61,12 @@ alter table public.materials enable row level security;
 alter table public.plans enable row level security;
 alter table public.plan_topics enable row level security;
 alter table public.chat_messages enable row level security;
+
+-- Newer Supabase projects no longer grant table privileges to service_role
+-- by default, and bypassing RLS doesn't help without SELECT/INSERT rights.
+-- Grant them explicitly (idempotent — safe to re-run).
+grant usage on schema public to service_role;
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+alter default privileges in schema public grant all on tables to service_role;
+alter default privileges in schema public grant all on sequences to service_role;

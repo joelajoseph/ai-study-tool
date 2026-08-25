@@ -1,10 +1,8 @@
 import { PDFParse } from "pdf-parse";
-import { ApiError } from "@/lib/api-error";
+import { ApiError, toErrorResponse } from "@/lib/api-error";
 import { MAX_FILE_SIZE, MAX_IMAGE_UPLOADS, MAX_TEXT_LENGTH } from "@/lib/constants";
 import { generateStudyPlan, type ImagePart } from "@/lib/llm";
-import { listMaterials, loadLatestPlan, saveGeneratedPlan, type ParsedUpload } from "@/lib/persistence";
-import type { MaterialSummary, SavedStateResponse, StoredPlan, StudyPlan } from "@/lib/study-plan";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import type { ParsedUpload, PlanDraft } from "@/lib/study-plan";
 
 export const runtime = "nodejs";
 // Gemini calls with large attachments can outlast the default function limit.
@@ -36,6 +34,8 @@ async function readFiles(files: File[]) {
       // Too many inline images can exceed the model's request size limits.
       if (images.length >= MAX_IMAGE_UPLOADS) throw new ApiError(`Too many images. Upload at most ${MAX_IMAGE_UPLOADS}.`);
       images.push({ name: file.name, mimeType: file.type, data: Buffer.from(await file.arrayBuffer()).toString("base64") });
+      // Image content is not stored in the draft (only metadata) until raw
+      // files move to Supabase Storage.
       uploads.push({ title: file.name, sourceType: "image", text: null });
     } else if (file.type.startsWith("text/") || file.name.toLowerCase().endsWith(".txt")) {
       const text = await file.text();
@@ -49,24 +49,8 @@ async function readFiles(files: File[]) {
   return { text: text.slice(0, MAX_TEXT_LENGTH), truncated: text.length > MAX_TEXT_LENGTH, images, uploads };
 }
 
-// The latest saved plan plus the material list, so a page refresh (or a new
-// browser session) brings everything back.
-export async function GET() {
-  if (!isSupabaseConfigured()) {
-    return Response.json({ plan: null, materials: [], persistenceEnabled: false } satisfies SavedStateResponse);
-  }
-  try {
-    const [plan, materials] = await Promise.all([loadLatestPlan(), listMaterials()]);
-    return Response.json({ plan, materials, persistenceEnabled: true } satisfies SavedStateResponse);
-  } catch (error) {
-    console.error("Loading saved state failed:", error);
-    return Response.json(
-      { plan: null, materials: [], persistenceEnabled: true, error: "Couldn't load your saved plan." } satisfies SavedStateResponse,
-      { status: 500 },
-    );
-  }
-}
-
+// Generation only ever produces a client-side draft — nothing is written to
+// the database until the user explicitly saves it via POST /api/plans.
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -99,37 +83,24 @@ export async function POST(request: Request) {
       images: uploaded.images,
     });
 
-    // Persistence is best-effort: a Supabase problem should never cost the
-    // user a plan they just generated.
-    let savedPlan: StoredPlan | StudyPlan = plan;
-    let materials: MaterialSummary[] | undefined;
-    const notes: string[] = [];
-    if (uploaded.truncated) notes.push("Heads up: your uploads were longer than the size limit, so only part of that material was used.");
-    if (isSupabaseConfigured()) {
-      try {
-        savedPlan = await saveGeneratedPlan({
-          examDate,
-          assessmentType,
-          daysRemaining,
-          priorKnowledge,
-          topicsText: topics,
-          pastedMaterials,
-          uploads: uploaded.uploads,
-          plan,
-        });
-        materials = await listMaterials();
-      } catch (dbError) {
-        console.error("Saving plan failed:", dbError);
-        notes.push("Your plan was generated but couldn't be saved, so it won't survive a page refresh.");
-      }
-    }
-
-    const warning = notes.length > 0 ? notes.join(" ") : undefined;
-    return Response.json({ plan: savedPlan, materials, ...(warning ? { warning } : {}) });
+    // The draft carries everything the save endpoint will need later — the
+    // plan plus the inputs and parsed uploads it came from.
+    const draft: PlanDraft = {
+      examDate,
+      assessmentType,
+      daysRemaining,
+      priorKnowledge,
+      topicsText: topics,
+      pastedMaterials,
+      uploads: uploaded.uploads,
+    };
+    return Response.json({
+      plan,
+      draft,
+      ...(uploaded.truncated ? { warning: "Heads up: your uploads were longer than the size limit, so only part of that material was used." } : {}),
+    });
   } catch (error) {
     console.error("Study plan generation failed:", error);
-    const message = error instanceof Error ? error.message : "Unable to generate a study plan.";
-    const status = error instanceof ApiError ? error.status : 500;
-    return Response.json({ error: message }, { status });
+    return toErrorResponse(error, "Unable to generate a study plan.");
   }
 }

@@ -9,3 +9,11 @@ export class ApiError extends Error {
     this.status = status;
   }
 }
+
+// Shared tail for route catch blocks: log for debugging, then answer with the
+// error's message and status (or an opaque 500).
+export function toErrorResponse(error: unknown, fallbackMessage: string): Response {
+  const message = error instanceof Error ? error.message : fallbackMessage;
+  const status = error instanceof ApiError ? error.status : 500;
+  return Response.json({ error: message }, { status });
+}

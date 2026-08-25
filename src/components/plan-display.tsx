@@ -47,7 +47,14 @@ export function PlanDisplay({ plan, assessmentType }: { plan: StudyPlan; assessm
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">Your {planType} study plan</p>
-          <h2 className="mt-1 text-2xl font-semibold">{plan.daysRemaining} {plan.daysRemaining === 1 ? "day" : "days"} to prepare</h2>
+          {plan.title ? (
+            <>
+              <h2 className="mt-1 text-2xl font-semibold">{plan.title}</h2>
+              <p className="mt-0.5 text-sm font-medium text-slate-500">{plan.daysRemaining} {plan.daysRemaining === 1 ? "day" : "days"} to prepare</p>
+            </>
+          ) : (
+            <h2 className="mt-1 text-2xl font-semibold">{plan.daysRemaining} {plan.daysRemaining === 1 ? "day" : "days"} to prepare</h2>
+          )}
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600">{plan.topics.length} focus areas</span>
       </div>
