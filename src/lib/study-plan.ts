@@ -1,5 +1,14 @@
 export type ParsedUpload = { title: string; sourceType: "pdf" | "image" | "text"; text: string | null };
-export type StudyTopic = { title: string; priority: number; estimatedMinutes: number; rationale: string; suggestedDay: number; materials: string[] };
+export type StudyTopic = {
+  id?: number;
+  title: string;
+  priority: number;
+  estimatedMinutes: number;
+  rationale: string;
+  suggestedDay: number;
+  materials: string[];
+  completed?: boolean;
+};
 export type StudyPlan = { title?: string | null; overview: string; daysRemaining: number; topics: StudyTopic[]; assessmentType?: "quiz" | "exam" };
 
 // Everything needed to write a generated plan to the database later. It lives
@@ -26,6 +35,8 @@ export type StoredPlan = {
   createdAt: string;
   overview: string;
   daysRemaining: number;
+  topicsText?: string | null;
+  priorKnowledge?: string | null;
   topics: PlanTopicRow[];
 };
 export type MaterialSummary = { id: number; title: string; sourceType: "pdf" | "image" | "text"; createdAt: string };
@@ -39,6 +50,53 @@ export type PlanSummary = {
   createdAt: string;
   topicCount: number;
 };
+
+export type PlanProgress = {
+  totalTopics: number;
+  completedTopics: number;
+  percent: number;
+  totalMinutes: number;
+  completedMinutes: number;
+  remainingMinutes: number;
+};
+
+export function calculateProgress(topics: Array<{ completed?: boolean; estimatedMinutes: number }>): PlanProgress {
+  const totalTopics = topics.length;
+  if (totalTopics === 0) {
+    return {
+      totalTopics: 0,
+      completedTopics: 0,
+      percent: 0,
+      totalMinutes: 0,
+      completedMinutes: 0,
+      remainingMinutes: 0,
+    };
+  }
+
+  let completedTopics = 0;
+  let totalMinutes = 0;
+  let completedMinutes = 0;
+
+  for (const topic of topics) {
+    totalMinutes += topic.estimatedMinutes;
+    if (topic.completed) {
+      completedTopics += 1;
+      completedMinutes += topic.estimatedMinutes;
+    }
+  }
+
+  const percent = Math.round((completedTopics / totalTopics) * 100);
+  const remainingMinutes = Math.max(0, totalMinutes - completedMinutes);
+
+  return {
+    totalTopics,
+    completedTopics,
+    percent,
+    totalMinutes,
+    completedMinutes,
+    remainingMinutes,
+  };
+}
 
 export function defaultPlanTitle(assessmentType: "quiz" | "exam", examDate: string) {
   return `${assessmentType === "quiz" ? "Quiz" : "Exam"} — ${examDate}`;

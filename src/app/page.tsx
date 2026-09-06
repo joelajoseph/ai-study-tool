@@ -6,10 +6,11 @@ import { ChatPanel } from "@/components/chat-panel";
 import { PlanDisplay, PlanEmptyState } from "@/components/plan-display";
 import { PlanTitlePanel } from "@/components/plan-title-panel";
 import { PlansList } from "@/components/plans-list";
+import { RegenerateModal } from "@/components/regenerate-modal";
 import { SavedMaterials } from "@/components/saved-materials";
 import { MAX_IMAGE_UPLOADS } from "@/lib/constants";
 import { defaultPlanTitle } from "@/lib/study-plan";
-import type { LoadedPlan, MaterialSummary, PlanDraft, PlanSummary, StoredPlan, StudyPlan } from "@/lib/study-plan";
+import type { LoadedPlan, MaterialSummary, PlanDraft, PlanSummary, StoredPlan, StudyPlan, StudyTopic } from "@/lib/study-plan";
 
 export default function Home() {
   const view = useAppView();
@@ -82,7 +83,7 @@ export default function Home() {
                       <button type="button" onClick={view.openSavePanel} aria-expanded={view.savePanelOpen} disabled={!view.persistenceEnabled} title={view.persistenceEnabled ? undefined : "Configure Supabase to save plans"} className="rounded-xl bg-emerald-700 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300">{view.savePanelOpen ? "Save plan ↓" : "Save plan"}</button>
                     </div>
                   </div>
-                  <PlanDisplay plan={view.draftPlan} assessmentType={view.assessmentType} />
+                  <PlanDisplay plan={view.draftPlan} assessmentType={view.assessmentType} onToggleTopic={view.toggleDraftTopic} />
                   {view.savePanelOpen && (
                     <PlanTitlePanel
                       className="mt-5"
@@ -109,9 +110,18 @@ export default function Home() {
 
         {view.current === "saved" && view.loaded && (
           <div className="mx-auto max-w-3xl">
-            <div className="mb-5 flex items-center justify-between gap-3">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <button type="button" onClick={view.backToList} className="text-sm font-semibold text-emerald-700 transition hover:text-emerald-800">← My plans</button>
-              <button type="button" onClick={view.openRenamePanel} aria-expanded={view.renamePanelOpen} className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 transition hover:border-emerald-400 hover:text-emerald-800">{view.renamePanelOpen ? "Rename ↑" : "Rename"}</button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={view.openRegenerateModal}
+                  className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-emerald-400 hover:text-emerald-800"
+                >
+                  ↻ Recalibrate schedule
+                </button>
+                <button type="button" onClick={view.openRenamePanel} aria-expanded={view.renamePanelOpen} className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 transition hover:border-emerald-400 hover:text-emerald-800">{view.renamePanelOpen ? "Rename ↑" : "Rename"}</button>
+              </div>
             </div>
             {view.renamePanelOpen && (
               <PlanTitlePanel
@@ -129,13 +139,25 @@ export default function Home() {
               />
             )}
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
-              <PlanDisplay plan={view.loaded.plan} assessmentType={view.loaded.plan.assessmentType} />
+              <PlanDisplay
+                plan={view.loaded.plan}
+                assessmentType={view.loaded.plan.assessmentType}
+                onToggleTopic={view.toggleTopic}
+                togglingTopicId={view.togglingTopicId}
+              />
               <SavedMaterials materials={view.loaded.materials} />
               {/* key forces a fresh mount per plan, so switching plans
                   reloads that plan's conversation instead of keeping the
                   previous one's messages. */}
               <ChatPanel key={view.loaded.plan.id} planId={view.loaded.plan.id} />
             </div>
+
+            <RegenerateModal
+              plan={view.loaded.plan}
+              isOpen={view.regenerateOpen}
+              onClose={view.closeRegenerateModal}
+              onPlanUpdated={view.onPlanRegenerated}
+            />
           </div>
         )}
       </section>
@@ -159,6 +181,8 @@ function useAppView() {
   const [renamePanelOpen, setRenamePanelOpen] = useState(false);
   const [renameTitle, setRenameTitle] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+  const [regenerateOpen, setRegenerateOpen] = useState(false);
+  const [togglingTopicId, setTogglingTopicId] = useState<number | null>(null);
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
   const [examDate, setExamDate] = useState("");
   const [assessmentType, setAssessmentType] = useState<"quiz" | "exam">("exam");
@@ -395,6 +419,67 @@ function useAppView() {
     }
   }
 
+  async function toggleTopic(topic: StudyTopic, _index: number, completed: boolean) {
+    if (!loaded || topic.id == null) return;
+    const targetId = topic.id;
+    const previousTopics = loaded.plan.topics;
+
+    // Optimistic update
+    setLoaded({
+      ...loaded,
+      plan: {
+        ...loaded.plan,
+        topics: loaded.plan.topics.map((t) => (t.id === targetId ? { ...t, completed } : t)),
+      },
+    });
+    setTogglingTopicId(targetId);
+
+    try {
+      const response = await fetch(`/api/plans/${loaded.plan.id}/topics/${targetId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ completed }),
+      });
+      if (!response.ok) {
+        const result = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(result.error ?? "Failed to update topic.");
+      }
+    } catch (err) {
+      // Revert optimistic update
+      setLoaded({
+        ...loaded,
+        plan: {
+          ...loaded.plan,
+          topics: previousTopics,
+        },
+      });
+      setError(err instanceof Error ? err.message : "Failed to update topic completion.");
+    } finally {
+      setTogglingTopicId(null);
+    }
+  }
+
+  function toggleDraftTopic(_topic: StudyTopic, index: number, completed: boolean) {
+    if (!draftPlan) return;
+    setDraftPlan({
+      ...draftPlan,
+      topics: draftPlan.topics.map((t, i) => (i === index ? { ...t, completed } : t)),
+    });
+  }
+
+  function openRegenerateModal() {
+    setRegenerateOpen(true);
+  }
+
+  function closeRegenerateModal() {
+    setRegenerateOpen(false);
+  }
+
+  function onPlanRegenerated(updated: LoadedPlan) {
+    setLoaded(updated);
+    void refreshPlans();
+  }
+
   function backToList() {
     setCurrent("list");
     void refreshPlans();
@@ -415,6 +500,13 @@ function useAppView() {
     renameTitle,
     setRenameTitle,
     isRenaming,
+    regenerateOpen,
+    openRegenerateModal,
+    closeRegenerateModal,
+    onPlanRegenerated,
+    toggleTopic,
+    toggleDraftTopic,
+    togglingTopicId,
     isLoadingPlan,
     examDate,
     setExamDate,

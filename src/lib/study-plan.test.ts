@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultPlanTitle, parsePlan, planDisplayLabel } from "./study-plan";
+import { calculateProgress, defaultPlanTitle, parsePlan, planDisplayLabel } from "./study-plan";
 
 const validPlan = {
   overview: "Focus on formulas first.",
@@ -103,3 +103,87 @@ describe("plan titles", () => {
     expect(planDisplayLabel({ title: "Calc II midterm", assessmentType: "exam", examDate: "2026-09-01" })).toBe("Calc II midterm");
   });
 });
+
+describe("calculateProgress", () => {
+  it("handles empty topics gracefully", () => {
+    const progress = calculateProgress([]);
+    expect(progress).toEqual({
+      totalTopics: 0,
+      completedTopics: 0,
+      percent: 0,
+      totalMinutes: 0,
+      completedMinutes: 0,
+      remainingMinutes: 0,
+    });
+  });
+
+  it("computes 0% when no topics are completed", () => {
+    const topics = [
+      { completed: false, estimatedMinutes: 60 },
+      { completed: false, estimatedMinutes: 90 },
+    ];
+    const progress = calculateProgress(topics);
+    expect(progress).toEqual({
+      totalTopics: 2,
+      completedTopics: 0,
+      percent: 0,
+      totalMinutes: 150,
+      completedMinutes: 0,
+      remainingMinutes: 150,
+    });
+  });
+
+  it("computes accurate percentage and remaining minutes for partial completion", () => {
+    const topics = [
+      { completed: true, estimatedMinutes: 60 },
+      { completed: false, estimatedMinutes: 40 },
+      { completed: false, estimatedMinutes: 80 },
+    ];
+    const progress = calculateProgress(topics);
+    expect(progress.totalTopics).toBe(3);
+    expect(progress.completedTopics).toBe(1);
+    expect(progress.percent).toBe(33);
+    expect(progress.totalMinutes).toBe(180);
+    expect(progress.completedMinutes).toBe(60);
+    expect(progress.remainingMinutes).toBe(120);
+  });
+
+  it("computes 100% when all topics are completed", () => {
+    const topics = [
+      { completed: true, estimatedMinutes: 30 },
+      { completed: true, estimatedMinutes: 45 },
+    ];
+    const progress = calculateProgress(topics);
+    expect(progress.totalTopics).toBe(2);
+    expect(progress.completedTopics).toBe(2);
+    expect(progress.percent).toBe(100);
+    expect(progress.completedMinutes).toBe(75);
+    expect(progress.remainingMinutes).toBe(0);
+  });
+});
+
+describe("buildRegenerateStudyPlanPrompt", () => {
+  it("includes completed topics as done and focuses on remaining topics", async () => {
+    const { buildRegenerateStudyPlanPrompt } = await import("./prompts/study-plan");
+    const prompt = buildRegenerateStudyPlanPrompt({
+      examDate: "2026-09-10",
+      assessmentType: "exam",
+      daysRemaining: 3,
+      priorKnowledge: "Knows basic calculus",
+      originalTopics: "Integration, Series, Vectors",
+      courseMaterials: "Chapter 7 and 8 notes",
+      completedTopics: ["Integration by parts"],
+      remainingTopics: ["Infinite series", "Vector fields"],
+      progressNotes: "Need more practice on vector fields",
+    });
+
+    expect(prompt).toContain("What the learner has already completed (DONE — DO NOT reschedule these topics):");
+    expect(prompt).toContain("Integration by parts");
+    expect(prompt).toContain("Topics previously planned that still need work:");
+    expect(prompt).toContain("Infinite series");
+    expect(prompt).toContain("Vector fields");
+    expect(prompt).toContain("Need more practice on vector fields");
+    expect(prompt).toContain("Days remaining now: 3");
+  });
+});
+

@@ -46,3 +46,75 @@ Rules:
 
 Planning approach: if assessment type is quiz, favor shorter, targeted sessions focused on key concepts, quick practice drills, and the tight time horizon. If assessment type is exam, create a comprehensive plan that covers the breadth of requested topics, uses mixed-topic review, and includes practice exams or mock tests when the supplied materials make them appropriate.`;
 }
+
+export type RegeneratePlanPromptInput = {
+  examDate: string;
+  assessmentType: "quiz" | "exam";
+  daysRemaining: number;
+  priorKnowledge: string;
+  originalTopics: string;
+  courseMaterials: string;
+  completedTopics: string[];
+  remainingTopics: string[];
+  progressNotes?: string;
+};
+
+export function buildRegenerateStudyPlanPrompt(input: RegeneratePlanPromptInput) {
+  const completedList = input.completedTopics.length > 0
+    ? input.completedTopics.map((title, i) => `${i + 1}. ${title}`).join("\n")
+    : "None completed yet.";
+
+  const remainingList = input.remainingTopics.length > 0
+    ? input.remainingTopics.map((title, i) => `${i + 1}. ${title}`).join("\n")
+    : "None recorded.";
+
+  return `You are a thoughtful study-planning assistant recalibrating an existing study plan mid-way.
+
+Assessment type: ${input.assessmentType}
+Assessment date: ${input.examDate}
+Days remaining now: ${input.daysRemaining}
+
+Original learner background & prior knowledge:
+${input.priorKnowledge || "None specified."}
+
+What the learner has already completed (DONE — DO NOT reschedule these topics):
+${completedList}
+
+Topics previously planned that still need work:
+${remainingList}
+
+Learner's current update / mid-study feedback:
+${input.progressNotes || "Continuing study; re-sequence the remaining topics across the remaining days."}
+
+Requested topics or curriculum:
+${input.originalTopics || "Infer from the course materials and remaining topics."}
+
+Course study materials (pasted text and extracted uploads):
+${input.courseMaterials}
+
+Generate a revised schedule ONLY for the remaining work across the remaining ${input.daysRemaining} days.
+Do NOT re-list or re-schedule the completed topics in the topics array. Treat the completed topics as already learned foundation.
+
+Return ONLY valid JSON. Do not include markdown, a code fence, or explanatory text. Use exactly this shape:
+{
+  "overview": "A short 1–2 sentence summary of this revised schedule and how it accommodates progress so far.",
+  "topics": [
+    {
+      "title": "Specific topic from the remaining material",
+      "priority": 1,
+      "estimatedMinutes": 90,
+      "rationale": "Why this topic is prioritized here given current progress and remaining days.",
+      "suggestedDay": 1,
+      "materials": ["Specific material reference"]
+    }
+  ]
+}
+
+Rules:
+- Schedule the topics across days 1 to ${Math.max(input.daysRemaining, 1)}.
+- "priority" is a strict ranking with no ties: unique integers 1, 2, 3, … where 1 means study first.
+- "estimatedMinutes" must be a positive integer.
+- "materials" must list the specific supplied materials to use for that topic, in the exact order the learner should work through them. Never invent materials not found in the supplied materials.
+- Balance the remaining topics so each day's study time stays reasonable (under about 4 hours per day).
+- If days remaining is very short, prioritize the most critical remaining topics and consolidate or streamline lighter review.`;
+}

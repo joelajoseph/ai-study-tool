@@ -2,7 +2,7 @@ import "server-only";
 
 import { requireSupabase } from "@/lib/supabase";
 import { mapChatMessageRows, type ChatMessage, type ChatMessageRow, type MaterialWithText } from "@/lib/chat";
-import type { LoadedPlan, PlanDraft, PlanSummary, StudyPlan } from "@/lib/study-plan";
+import type { LoadedPlan, PlanDraft, PlanSummary, PlanTopicRow, StudyPlan, StudyTopic } from "@/lib/study-plan";
 
 // Writes a generated draft to the database for the first time: the plan row,
 // its topics, and the materials that came with the generation. Materials are
@@ -84,7 +84,7 @@ export async function loadPlan(id: number): Promise<LoadedPlan | null> {
   const supabase = requireSupabase();
   const { data: planRow, error } = await supabase
     .from("plans")
-    .select("id, title, exam_date, assessment_type, days_remaining_at_creation, overview, created_at")
+    .select("id, title, exam_date, assessment_type, days_remaining_at_creation, overview, topics_text, prior_knowledge, created_at")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(`Loading plan failed: ${error.message}`);
@@ -111,6 +111,8 @@ export async function loadPlan(id: number): Promise<LoadedPlan | null> {
       createdAt: planRow.created_at,
       overview: planRow.overview,
       daysRemaining: planRow.days_remaining_at_creation,
+      topicsText: planRow.topics_text,
+      priorKnowledge: planRow.prior_knowledge,
       topics: (topicsResult.data ?? []).map((row) => ({
         id: row.id,
         completed: row.completed,
@@ -129,6 +131,84 @@ export async function loadPlan(id: number): Promise<LoadedPlan | null> {
       createdAt: row.created_at,
     })),
   };
+}
+
+export async function toggleTopicCompleted(planId: number, topicId: number, completed: boolean): Promise<PlanTopicRow> {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from("plan_topics")
+    .update({ completed })
+    .eq("id", topicId)
+    .eq("plan_id", planId)
+    .select("id, title, priority_order, estimated_minutes, rationale, suggested_day, materials, completed")
+    .single();
+
+  if (error || !data) throw new Error(`Updating topic status failed: ${error?.message ?? "Topic not found"}`);
+  return {
+    id: data.id,
+    completed: data.completed,
+    title: data.title,
+    rationale: data.rationale,
+    priority: data.priority_order,
+    estimatedMinutes: data.estimated_minutes,
+    suggestedDay: data.suggested_day,
+    materials: Array.isArray(data.materials) ? data.materials.filter((entry): entry is string => typeof entry === "string") : [],
+  };
+}
+
+export async function updatePlanSchedule(input: {
+  planId: number;
+  overview: string;
+  daysRemaining: number;
+  examDate?: string;
+  newTopics: StudyTopic[];
+  retainCompleted?: boolean;
+}): Promise<LoadedPlan> {
+  const supabase = requireSupabase();
+  const retainCompleted = input.retainCompleted ?? true;
+
+  // 1. Update plan overview, remaining days, and exam date if provided
+  const updatePayload: { overview: string; days_remaining_at_creation: number; exam_date?: string } = {
+    overview: input.overview,
+    days_remaining_at_creation: input.daysRemaining,
+  };
+  if (input.examDate) {
+    updatePayload.exam_date = input.examDate;
+  }
+
+  const { error: planError } = await supabase
+    .from("plans")
+    .update(updatePayload)
+    .eq("id", input.planId);
+  if (planError) throw new Error(`Updating plan overview failed: ${planError.message}`);
+
+  // 2. Remove incomplete topics (or all if retainCompleted is false)
+  let deleteQuery = supabase.from("plan_topics").delete().eq("plan_id", input.planId);
+  if (retainCompleted) {
+    deleteQuery = deleteQuery.eq("completed", false);
+  }
+  const { error: deleteError } = await deleteQuery;
+  if (deleteError) throw new Error(`Clearing previous topics failed: ${deleteError.message}`);
+
+  // 3. Insert newly scheduled topics
+  if (input.newTopics.length > 0) {
+    const topicRows = input.newTopics.map((topic, index) => ({
+      plan_id: input.planId,
+      title: topic.title,
+      priority_order: topic.priority || index + 1,
+      estimated_minutes: topic.estimatedMinutes,
+      rationale: topic.rationale,
+      suggested_day: topic.suggestedDay,
+      materials: topic.materials,
+      completed: false,
+    }));
+    const { error: insertError } = await supabase.from("plan_topics").insert(topicRows);
+    if (insertError) throw new Error(`Saving updated topics failed: ${insertError.message}`);
+  }
+
+  const loaded = await loadPlan(input.planId);
+  if (!loaded) throw new Error("Plan was updated but could not be read back.");
+  return loaded;
 }
 
 export async function deletePlan(id: number): Promise<void> {

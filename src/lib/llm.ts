@@ -2,7 +2,7 @@ import "server-only";
 
 import { ApiError } from "@/lib/api-error";
 import type { ChatTurn } from "@/lib/chat";
-import { buildStudyPlanPrompt } from "@/lib/prompts/study-plan";
+import { buildRegenerateStudyPlanPrompt, buildStudyPlanPrompt, type RegeneratePlanPromptInput } from "@/lib/prompts/study-plan";
 import { parsePlan, type StudyPlan } from "@/lib/study-plan";
 
 export type ImagePart = { mimeType: string; data: string; name: string };
@@ -65,6 +65,52 @@ export async function generateStudyPlan(input: {
       throw new ApiError("You've hit Gemini's free-tier rate limit. Wait a minute and try again.", 429);
     }
     throw new ApiError("Gemini couldn't generate a plan right now. Please try again.", 502);
+  }
+
+  let data: GenerateContentResponse;
+  try {
+    data = await response.json();
+  } catch {
+    throw new ApiError("Gemini returned an unreadable response. Please try again.", 502);
+  }
+
+  const rawPlan = data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("");
+  if (!rawPlan) throw new ApiError("Gemini returned an empty plan. Please try again.", 502);
+  return parsePlan(rawPlan, input.daysRemaining);
+}
+
+export async function regenerateStudyPlan(input: RegeneratePlanPromptInput): Promise<StudyPlan> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new ApiError("Add GEMINI_API_KEY to .env.local before regenerating a plan.", 500);
+
+  const model = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
+  const prompt = buildRegenerateStudyPlanPrompt(input);
+
+  let response: Response;
+  try {
+    response = await fetch(`${GEMINI_BASE_URL}/${model}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.3 },
+      }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    throw new ApiError("Couldn't reach Gemini (network error or timeout). Please try again.", 504);
+  }
+
+  if (!response.ok) {
+    const details = await response.text();
+    console.error("Gemini request failed:", response.status, details);
+    if (response.status === 401 || response.status === 403) {
+      throw new ApiError("Gemini rejected your API key. Double-check GEMINI_API_KEY in .env.local.", 500);
+    }
+    if (response.status === 429) {
+      throw new ApiError("You've hit Gemini's free-tier rate limit. Wait a minute and try again.", 429);
+    }
+    throw new ApiError("Gemini couldn't regenerate the plan right now. Please try again.", 502);
   }
 
   let data: GenerateContentResponse;
