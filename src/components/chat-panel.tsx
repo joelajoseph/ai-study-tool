@@ -102,37 +102,37 @@ export function ChatPanel({ planId }: { planId: number }) {
   }
 
   return (
-    <div className="mt-7 border-t border-slate-200 pt-5">
+    <div className="mt-7 border-t border-slate-200 pt-5 dark:border-slate-800">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Ask about your materials</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Ask about your materials</p>
         {messages.length > 0 && (
-          <button type="button" onClick={() => void clearChat()} className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600">
+          <button type="button" onClick={() => void clearChat()} className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-500 dark:hover:bg-rose-950/40 dark:hover:text-rose-400">
             Clear
           </button>
         )}
       </div>
 
-      <div aria-live="polite" className="mt-3 max-h-96 space-y-3 overflow-y-auto rounded-2xl bg-slate-50 p-4">
+      <div aria-live="polite" className="mt-3 max-h-96 space-y-3 overflow-y-auto rounded-2xl bg-slate-50 p-4 dark:bg-slate-950/60 dark:ring-1 dark:ring-slate-800">
         {isLoading ? (
-          <p className="py-6 text-center text-sm text-slate-500">Loading conversation…</p>
+          <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">Loading conversation…</p>
         ) : messages.length === 0 && !isSending ? (
-          <p className="py-6 text-center text-sm text-slate-500">Ask anything about your uploaded notes or this plan — answers come only from your own materials.</p>
+          <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">Ask anything about your uploaded notes or this plan — answers come only from your own materials.</p>
         ) : (
           <>
             {messages.map((message) =>
               message.role === "user" ? (
                 <div key={message.id} className="flex justify-end">
-                  <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-emerald-700 px-4 py-2.5 text-sm leading-6 text-white">{message.content}</p>
+                  <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-emerald-700 px-4 py-2.5 text-sm leading-6 text-white dark:bg-emerald-600">{message.content}</p>
                 </div>
               ) : (
                 <div key={message.id} className="flex justify-start">
-                  <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-white px-4 py-2.5 text-sm leading-6 text-slate-700 ring-1 ring-slate-200">{message.content}</p>
+                  <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-white px-4 py-2.5 text-sm leading-6 text-slate-700 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-800">{message.content}</p>
                 </div>
               ),
             )}
             {isSending && (
               <div className="flex justify-start">
-                <p className="rounded-2xl rounded-bl-md bg-white px-4 py-2.5 text-sm text-slate-400 ring-1 ring-slate-200">Thinking…</p>
+                <p className="rounded-2xl rounded-bl-md bg-white px-4 py-2.5 text-sm text-slate-400 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-500 dark:ring-slate-800">Thinking…</p>
               </div>
             )}
             <div ref={endRef} />
@@ -140,12 +140,12 @@ export function ChatPanel({ planId }: { planId: number }) {
         )}
       </div>
 
-      {error && <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
+      {error && <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-1 dark:ring-rose-900/50">{error}</p>}
 
       <form onSubmit={handleSubmit} className="mt-3 flex items-end gap-3">
         <textarea
           aria-label="Ask a question about your materials"
-          className="min-h-12 flex-1 resize-y rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 disabled:bg-slate-100"
+          className="min-h-12 flex-1 resize-y rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-500 dark:focus:ring-emerald-900/40 dark:disabled:bg-slate-800"
           placeholder="e.g. Quiz me on the chapter 4 formulas"
           rows={2}
           maxLength={MAX_CHAT_MESSAGE_LENGTH}
@@ -154,7 +154,7 @@ export function ChatPanel({ planId }: { planId: number }) {
           onKeyDown={handleKeyDown}
           disabled={isLoading || isSending}
         />
-        <button type="submit" disabled={isLoading || isSending || !draft.trim()} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300">
+        <button type="submit" disabled={isLoading || isSending || !draft.trim()} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-600">
           Ask
         </button>
       </form>

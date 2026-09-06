@@ -1,6 +1,16 @@
 @import "tailwindcss";
 
-:root { --background: #f7f7f3; --foreground: #0f172a; }
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f7f7f3;
+  --foreground: #0f172a;
+}
+
+.dark {
+  --background: #0b0f19;
+  --foreground: #f8fafc;
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -10,4 +20,10 @@
 
 * { box-sizing: border-box; }
 
-body { background: var(--background); color: var(--foreground); font-family: var(--font-sans); }
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
